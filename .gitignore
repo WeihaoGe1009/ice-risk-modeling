@@ -1,0 +1,46 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# ── R ─────────────────────────────────────────────────────────────────────────
+.Rhistory
+.RData
+.Rproj.user/
+Rplots.pdf
+*.Rproj
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Raw data (too large / manually downloaded / not redistributable) ──────────
+data/raw/
+
+# ── Large processed intermediates (rebuilt by the pipeline) ──────────────────
+data/processed/gdelt_events_log.csv
+data/processed/gdelt_checkpoint.txt
+data/processed/gdelt_county_month.csv
+data/processed/panel.csv
+
+# Keep static_features.csv — small (336 KB) and needed by the dashboard
+# Keep model/model_artifacts/ — all small, needed by the dashboard
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb

@@ -1,11 +1,10 @@
 # ICE Enforcement Media Risk Model
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://ice-risk-model.streamlit.app)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![R](https://img.shields.io/badge/R-4.x-276DC3)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow)
 
-A statistical pipeline that estimates the probability of a US county appearing in **immigration enforcement media coverage** in the following month. Includes an interactive choropleth dashboard with county-level risk scores across all 3,222 US counties.
+A statistical pipeline that estimates the probability of a US county appearing in **immigration enforcement media coverage** in the following month. Outputs an interactive animated choropleth map across all 3,222 US counties.
 
 > **⚠️ Media attention model, not an enforcement intensity model.**
 > The dependent variable is derived from news coverage (GDELT), not from official enforcement records.
@@ -14,14 +13,13 @@ A statistical pipeline that estimates the probability of a US county appearing i
 
 ---
 
-## Live Demo
+## Interactive Map
 
-→ **[Open dashboard on Streamlit Community Cloud](https://ice-risk-model.streamlit.app)**
+**[→ Open interactive map (animated, Jan 2025 – Mar 2026)](https://YOUR_USERNAME.github.io/ice-risk-modeling/)**
 
-The dashboard shows:
-- US county choropleth heatmap with month-by-month slider (Jan 2025 – Mar 2026)
-- Per-county risk trend chart and feature breakdown
-- Model coefficients, calibration curve, and validation metrics
+[![ICE Enforcement Media Risk Map](docs/preview.png)](https://YOUR_USERNAME.github.io/ice-risk-modeling/)
+
+*Click the image or link above to open the interactive version with a month slider and county hover details.*
 
 ---
 
@@ -170,15 +168,18 @@ python data/build_panel.py
 # Train model (saves artifacts to model/model_artifacts/)
 Rscript model/train.R
 
-# Launch dashboard
-streamlit run dashboard/app.py
+# Regenerate the interactive map (writes docs/index.html + docs/preview.png)
+python scripts/generate_map.py
 ```
 
-### 6. Dashboard only (pre-computed artifacts already in repo)
+### 6. View the map without re-running the pipeline
+
+Pre-computed artifacts are already in the repo. Just regenerate the HTML:
 
 ```bash
-pip install streamlit plotly pandas
-streamlit run dashboard/app.py
+pip install plotly pandas kaleido
+python scripts/generate_map.py
+# Then open docs/index.html in your browser
 ```
 
 ---
@@ -191,18 +192,21 @@ data/
   fetch_gdelt.py           # GDELT GKG v1 → county × month binary indicators
   build_panel.py           # Full panel + lag features + ICE arrest rate
   processed/
-    static_features.csv    # 3,222 counties × 14 static features
+    static_features.csv    # 3,222 counties × 14 static features (in repo)
 model/
   train.R                  # glmer fit + threshold selection + artifact export
   model_artifacts/
     fixed_effects.csv      # Coefficients, SE, p-values, 95% CI
     random_effects.csv     # County BLUPs (3,222 intercepts)
-    predictions_all.csv    # Full panel predictions (used by dashboard)
+    predictions_all.csv    # Full panel predictions
     threshold.json         # Operating threshold + validation metrics
     calibration_data.csv   # Calibration bins for plot
     scale_params.csv       # Feature means/SDs (apply to new data)
-dashboard/
-  app.py                   # Streamlit dashboard
+scripts/
+  generate_map.py          # Builds docs/index.html (GitHub Pages map)
+docs/
+  index.html               # Interactive animated choropleth (GitHub Pages)
+  preview.png              # Static map snapshot (README embed)
 requirements.txt
 ```
 

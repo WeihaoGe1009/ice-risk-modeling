@@ -13,13 +13,18 @@ A statistical pipeline that estimates the probability of a US county appearing i
 
 ---
 
-## Interactive Map
+## Interactive Map + County Risk Lookup
 
-**[→ Open interactive map (animated, Jan 2025 – Mar 2026)](https://YOUR_USERNAME.github.io/ice-risk-modeling/)**
+**[→ Open interactive dashboard](https://YOUR_USERNAME.github.io/ice-risk-modeling/)**
 
 [![ICE Enforcement Media Risk Map](docs/preview.png)](https://YOUR_USERNAME.github.io/ice-risk-modeling/)
 
-*Click the image or link above to open the interactive version with a month slider and county hover details.*
+The dashboard page (link above) contains two sections:
+
+1. **Animated choropleth map** — all 3,222 US counties color-coded by risk score, with a month slider (Jan 2025 – Mar 2026) and hover details
+2. **County risk lookup** (scroll down on the page) — select State → County → Month to get a predicted probability with 95% interval and Low / Medium / High risk classification for up to 6 months ahead
+
+> GitHub README cannot run JavaScript, so the interactive content lives on the linked page, not here.
 
 ---
 

@@ -1,9 +1,0 @@
-{
-  "threshold": 0.1573,
-  "beta": 2,
-  "f_beta_at_threshold": 0.6613,
-  "precision_at_threshold": 0.3954,
-  "recall_at_threshold": 0.795,
-  "auc_pr": 0.6478,
-  "empirical_prevalence": 0.152
-}

@@ -15,7 +15,7 @@ A statistical pipeline that estimates the probability of a US county appearing i
 
 ## Interactive Map
 
-**[→ Open interactive map (animated, Jan 2025 – Mar 2026)](https://YOUR_USERNAME.github.io/ice-risk-modeling/)**
+**[→ Open interactive map (animated, Jan 2025 – Mar 2026)](https://WeihaoGe1009.github.io/ice-risk-modeling/)**
 
 [![ICE Enforcement Media Risk Map](docs/preview.png)](https://WeihaoGe1009.github.io/ice-risk-modeling/)
 

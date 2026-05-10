@@ -6,16 +6,23 @@ Generates two files for GitHub Pages:
   docs/index.html   — interactive Plotly choropleth with month slider
   docs/preview.png  — static snapshot of the latest month (for README embed)
 
+This script renders the Stage 2 model's in-sample predictions (training +
+validation period, Jan 2025 – Mar 2026).  Forward predictions beyond the
+panel are added separately by forward_predict.py, which also injects the
+county risk lookup panel into docs/index.html.
+
 The animated map uses efficient frame updates: county boundaries are stored
 once; only the color values (pred_prob) are swapped per frame.
-This keeps the HTML under ~3 MB instead of ~50 MB.
+This keeps the HTML under ~10 MB instead of ~50 MB.
 
-Usage:
-    python scripts/generate_map.py
+Pipeline order:
+    python scripts/generate_map.py       # produces docs/index.html
+    python scripts/forward_predict.py    # injects lookup panel + predictions.json
 
 Requires:
     pip install plotly pandas
-    pip install kaleido      # optional, only needed for preview.png
+    pip install kaleido==0.2.1   # optional, only needed for preview.png
+                                 # must be 0.2.x — kaleido 1.x is incompatible with plotly 5
 """
 
 import json
@@ -224,6 +231,7 @@ fig = go.Figure(
             text=(
                 "⚠️ <b>Media attention model</b> — predicts news coverage probability, "
                 "not ICE enforcement intensity. "
+                "Two-stage model: MA3 arrest-rate forecast (Stage 1) + glmer (Stage 2). "
                 "Coverage is systematically lower in rural and Republican-leaning areas."
             ),
             xref="paper", yref="paper",

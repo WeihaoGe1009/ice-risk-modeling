@@ -3,23 +3,41 @@
 scripts/forward_predict.py
 
 Generates forward county-level risk predictions beyond the training panel.
+Part of a two-stage pipeline:
+  Stage 1 (arrest_rate_model.py) — forecasts state-level ICE arrest rates via
+           a 3-month moving average (MA3) trained on FY23-26 arrest records.
+  Stage 2 (this script)          — uses those forecasted rates as the model
+           offset, fixing a ~10pp systematic underestimation that occurred when
+           the offset was set to zero. Validated in validate_forward.py.
 
 Steps:
-  1. Define Low / Medium / High thresholds from the validation distribution
-  2. Predict month-by-month (up to MAX_FORWARD ahead) with 95% prediction intervals
-  3. Stop when >50% of counties have intervals that cross a risk boundary
-  4. Write docs/predictions.json
-  5. Inject a State → County → Month lookup panel into docs/index.html
+  1. Load MA3 arrest-rate forecasts from model/model_artifacts/arrest_rate_forecasts.csv
+  2. Define Low / Medium / High thresholds from the validation distribution
+  3. Predict month-by-month (up to MAX_FORWARD ahead) with 95% prediction intervals
+  4. Stop when >50% of counties have intervals that cross a risk boundary
+  5. Write docs/predictions.json (includes prob, interval, percentile rank, risk level)
+  6. Inject a State → County → Month lookup panel into docs/index.html
 
-Usage:
-    python scripts/generate_map.py        # must run first
+Prerequisites:
+    python scripts/arrest_rate_model.py   # must run first (generates arrest rate forecasts)
+    python scripts/generate_map.py        # must run first (generates docs/index.html)
     python scripts/forward_predict.py
 
 Uncertainty method:
-    SE(η) = sqrt( Σ_j (x_j · SE(β_j))² + σ_u² )
-    where σ_u = sd of county random intercepts (BLUP distribution).
-    This is a diagonal approximation (ignores coefficient covariances).
+    SE(η) = sqrt( Σ_j (x_j · SE(β_j))² )
+    Diagonal approximation — ignores coefficient covariances and excludes σ_u
+    (county random-effect SD) because all 3,222 counties have estimated BLUPs;
+    they are known counties, not new draws from the random-effect distribution.
     Intervals are on the log-odds scale, then transformed via logistic().
+
+    Walk-forward validation (validate_forward.py) confirms oracle-lags vs
+    propagated-lags differ by Δ F2 < 0.001, so lag-propagation error is negligible.
+
+Offset:
+    offset(log1p(ice_arrest_rate_state)) — same transformation as glmer formula.
+    For historical months: actual recorded rate (from panel).
+    For future months: MA3-forecasted rate from arrest_rate_forecasts.csv.
+    Setting this to 0 causes −10.6pp mean bias; using MA3 reduces it to +1.4pp.
 
 Lag proxy:
     The model uses mention_count in lag features; we reconstruct this from
@@ -52,11 +70,28 @@ STATE_FIPS = {
     "32":"NV","33":"NH","34":"NJ","35":"NM","36":"NY","37":"NC","38":"ND",
     "39":"OH","40":"OK","41":"OR","42":"PA","44":"RI","45":"SC","46":"SD",
     "47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA","54":"WV",
-    "55":"WI","56":"WY",
+    "55":"WI","56":"WY","66":"GU","72":"PR","78":"VI",
 }
 
 # ── Load artifacts ─────────────────────────────────────────────────────────────
 print("Loading model artifacts …")
+
+# Load arrest rate forecasts (MA3 model trained on full available data)
+# These replace the zero-offset used in the original pipeline and fix the
+# ~10pp systematic underestimation confirmed in validate_forward.py.
+_fc_path = BASE / "model" / "model_artifacts" / "arrest_rate_forecasts.csv"
+if _fc_path.exists():
+    _fc_df = pd.read_csv(_fc_path, dtype={"state_fips": str})
+    _fc_df["feature_month"] = pd.to_datetime(_fc_df["feature_month"])
+    # (state_fips, feature_month) → forecasted rate
+    ARREST_RATE_FC: dict = {
+        (row["state_fips"], row["feature_month"]): float(row["rate_selected"])
+        for _, row in _fc_df.iterrows()
+    }
+    print(f"  Arrest rate forecasts loaded: {len(ARREST_RATE_FC)} state-month entries")
+else:
+    ARREST_RATE_FC = {}
+    print("  No arrest_rate_forecasts.csv found — offset will be 0 (run arrest_rate_model.py first)")
 
 preds_all = pd.read_csv(
     BASE / "model" / "model_artifacts" / "predictions_all.csv",
@@ -181,10 +216,14 @@ def compute_lags(fips: str, feat_month) -> tuple:
     counts = [get_count(fips, m) for m in months_back]
     return counts[0], sum(counts[:3]), sum(counts)
 
-def predict_one(fips: str, feat_month) -> tuple:
+def predict_one(fips: str, feat_month, ice_rate: float = 0.0) -> tuple:
     """
     Returns (prob, lower_95, upper_95) for county `fips`,
     predicting whether enforcement will occur at feat_month + 1 month.
+
+    ice_rate : state-level ICE arrest rate per 100k to use as model offset.
+               Default 0.0 (drops out of linear predictor).
+               Pass the MA3-forecasted rate from ARREST_RATE_FC for calibrated predictions.
     """
     row = static_d.get(fips)
     if row is None:
@@ -247,7 +286,10 @@ def predict_one(fips: str, feat_month) -> tuple:
     # for each — they are treated as known offsets, not random new draws.
     # Adding sigma_u^2 would inflate intervals as if predicting for an unseen county.
 
-    # Offset: no future ICE data → set to 0 (log1p(0) = 0, term drops out)
+    # ICE arrest rate offset: log1p(rate) — same transformation as in glmer formula.
+    # Previously zeroed out (no future data), now uses MA3-forecasted rate from
+    # arrest_rate_model.py, which fixes the ~10pp systematic underestimation.
+    eta += float(np.log1p(max(0.0, ice_rate)))
 
     se_eta = float(np.sqrt(var_eta))
     prob   = float(expit(eta))
@@ -272,7 +314,12 @@ for step in range(1, MAX_FORWARD + 1):
     n_crossing = 0
 
     for fips in all_fips:
-        result = predict_one(fips, feat_month)
+        # Look up MA3-forecasted arrest rate for this state × feature month
+        sf        = fips[:2]
+        feat_ts   = pd.Timestamp(feat_month)
+        ice_rate  = ARREST_RATE_FC.get((sf, feat_ts), 0.0)
+
+        result = predict_one(fips, feat_month, ice_rate=ice_rate)
         if result is None:
             continue
         prob, lower, upper = result
@@ -295,6 +342,14 @@ for step in range(1, MAX_FORWARD + 1):
             "risk":    rl,
             "crosses": crosses,
         })
+
+    # Compute within-month percentile rank for each county
+    probs_sorted = sorted(r["prob"] for r in rows)
+    n_total = len(probs_sorted)
+    for r in rows:
+        # percentile = fraction of counties with prob <= this county's prob
+        rank = sum(1 for p in probs_sorted if p <= r["prob"])
+        r["pctile"] = round(rank / n_total, 4)  # 0.0–1.0
 
     pct = n_crossing / len(rows) if rows else 0.0
     print(f"  {pct:.1%} of counties CI crosses boundary")
@@ -324,6 +379,21 @@ name_map  = {f["id"]: f["properties"].get("NAME","") + " " +
 sfips_map = {f["id"]: f["properties"].get("STATE","")
              for f in geo["features"]}
 
+# Connecticut switched from counties to planning regions in 2022.
+# Our data uses new FIPS (09110-09190); add traditional county names as aliases
+# so the dropdown is recognisable.
+CT_ALIASES = {
+    "09110": "Capitol Planning Region (Hartford area) CT",
+    "09120": "Greater Bridgeport Planning Region (Fairfield area) CT",
+    "09130": "Lower Connecticut River Valley Planning Region CT",
+    "09140": "Naugatuck Valley Planning Region CT",
+    "09150": "Northeastern Connecticut Planning Region (Windham area) CT",
+    "09160": "Northwest Hills Planning Region (Litchfield area) CT",
+    "09170": "South Central Regional Planning Region (New Haven area) CT",
+    "09180": "Southeastern Connecticut Planning Region (New London area) CT",
+    "09190": "Western Connecticut Planning Region (Danbury area) CT",
+}
+
 # ── Build predictions.json ─────────────────────────────────────────────────────
 print("Building predictions.json …")
 
@@ -332,7 +402,7 @@ avail_months = [s["label"] for s in forward_steps]
 counties_out = {}
 for fips in all_fips:
     state_abbr   = STATE_FIPS.get(fips[:2], "")
-    county_name  = name_map.get(fips, fips).strip()
+    county_name  = CT_ALIASES.get(fips) or name_map.get(fips, fips).strip()
     preds_list   = []
     for step in forward_steps:
         row = next((r for r in step["rows"] if r["fips"] == fips), None)
@@ -343,6 +413,7 @@ for fips in all_fips:
                 "lower":  row["lower"],
                 "upper":  row["upper"],
                 "risk":   row["risk"],
+                "pctile": row.get("pctile", 0.5),
             })
     counties_out[fips] = {
         "name":  county_name,
@@ -385,12 +456,14 @@ else:
       <div style="background:#fff8e1;border-left:4px solid #f59e0b;
                   padding:.8rem 1rem;margin-bottom:1.2rem;border-radius:0 6px 6px 0;
                   font-size:.85rem;line-height:1.5;color:#555;">
-        <strong>⚠️ Disclaimer:</strong> This is a <strong>coarse statistical model</strong>
+        <strong>⚠️ Disclaimer:</strong> This is a <strong>two-stage statistical model</strong>
         based on news coverage data (GDELT), not official enforcement records.
         Predictions reflect <em>media coverage probability</em>, not confirmed ICE activity.
         Do <strong>not</strong> use this for real enforcement risk assessment.
-        Intervals widen rapidly with forecast horizon; treat any prediction beyond
-        the first month as highly approximate.
+        Walk-forward validation (6 masked months) shows AUC-ROC 0.849, F2 0.303,
+        recall 76.5%, and mean bias +1.4 pp using a 3-month moving-average arrest-rate
+        forecast as the model offset. Intervals widen with forecast horizon; treat
+        predictions beyond the first month as approximate.
       </div>
 
       <!-- Threshold legend -->
@@ -473,6 +546,16 @@ else:
             '⚠️ The 95% interval spans more than one risk level — treat with extra caution.</div>'
           : '';
 
+        // Percentile ordinal suffix
+        var pctileNum = Math.round((pred.pctile || 0) * 100);
+        var suffix = (pctileNum === 11 || pctileNum === 12 || pctileNum === 13) ? 'th'
+                   : (pctileNum % 10 === 1) ? 'st'
+                   : (pctileNum % 10 === 2) ? 'nd'
+                   : (pctileNum % 10 === 3) ? 'rd' : 'th';
+        var pctileStr = pctileNum + suffix + ' percentile';
+        var pctileNote = '<span style="color:#888;font-size:.82rem;">' +
+          '(higher = more counties below this one)</span>';
+
         document.getElementById('result-card').style.display = 'block';
         document.getElementById('result-card').innerHTML =
           '<div style="font-size:1.05rem;font-weight:700;margin-bottom:.8rem;">'+
@@ -483,6 +566,8 @@ else:
           '<tr><td style="padding:.3rem 1rem .3rem 0;color:#555;">95% prediction interval</td>'+
           '<td>'+pct(pred.lower)+' – '+pct(pred.upper)+
           '&nbsp;<span style="color:#888;font-size:.82rem;">(±'+halfWidth+'%)</span></td></tr>'+
+          '<tr><td style="padding:.3rem 1rem .3rem 0;color:#555;">Percentile rank</td>'+
+          '<td><strong>'+pctileStr+'</strong>&nbsp;'+pctileNote+'</td></tr>'+
           '<tr><td style="padding:.3rem 1rem .3rem 0;color:#555;">Risk level</td>'+
           '<td>'+riskBadge(pred.risk)+'</td></tr>'+
           '</table>'+crossesNote;

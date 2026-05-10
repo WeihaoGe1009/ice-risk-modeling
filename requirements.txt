@@ -1,12 +1,16 @@
-# ── Dashboard ─────────────────────────────────────────────────────────────────
-streamlit>=1.35
+# ── Dashboard / visualisation ─────────────────────────────────────────────────
 plotly>=5.20
+kaleido==0.2.1         # static PNG export (must be 0.2.x for plotly 5.x compatibility)
 
 # ── Data pipeline ─────────────────────────────────────────────────────────────
 pandas>=2.0
 numpy>=1.26
 requests>=2.31
 openpyxl>=3.1          # read USDA RUCC / ICE arrest xlsx
+scipy>=1.10            # expit (logistic) in forward_predict.py / validate_forward.py
+
+# ── Arrest rate time-series model ─────────────────────────────────────────────
+statsmodels>=0.14      # Holt's exponential smoothing (ExponentialSmoothing) in arrest_rate_model.py
 
 # ── Geospatial (county FIPS crosswalk + spatial join) ─────────────────────────
 # geopandas 0.13 is the last Python-3.8-compatible release;

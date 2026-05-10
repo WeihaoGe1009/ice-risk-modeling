@@ -21,9 +21,9 @@ and Low / Medium / High risk classification for up to 6 months ahead.
 
 ## Interactive Map + County Risk Lookup
 
-**[→ Open interactive dashboard](https://YOUR_USERNAME.github.io/ice-risk-modeling/)**
+**[→ Open interactive dashboard](https://WeihaoGe1009.github.io/ice-risk-modeling/)**
 
-[![ICE Enforcement Media Risk Map](docs/preview.png)](https://YOUR_USERNAME.github.io/ice-risk-modeling/)
+[![ICE Enforcement Media Risk Map](docs/preview.png)](https://WeihaoGe1009.github.io/ice-risk-modeling/)
 
 The dashboard page (link above) contains two sections:
 
